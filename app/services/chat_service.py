@@ -73,8 +73,6 @@ def get_chat_history_return_conversation(chat_id, user_id, db: Session):
         conversation.append({"role": "system", "content": f"Previous conversation summary: {chat.summary} use this summary as context."})
     for message in history:
         conversation.append({"role": message.role, "content": message.content})
-    print(len(conversation))
-    print(conversation)
     return conversation
 
 def get_chat_history_return_all(chat_id, user_id, db: Session):

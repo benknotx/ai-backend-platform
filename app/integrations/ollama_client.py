@@ -14,7 +14,6 @@ async def chat(messages: list, model: str = DEFAULT_MODEL):
                                             "stream": False})
             response.raise_for_status()
             response_data = response.json()
-            print(response_data)
             return  response_data["message"]["content"]
     except httpx.ReadTimeout:
         raise HTTPException(status_code=504, detail="Model response timed out.")
