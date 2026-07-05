@@ -1,6 +1,7 @@
 # AI Backend Platform
+### Self-Hosted RAG & Multi-Model AI Service
 
-A self-hosted AI platform built with FastAPI and Ollama that provides:
+A self-hosted AI backend platform built with FastAPI, Ollama, and ChromaDB that combines secure multi-user chat with Retrieval-Augmented Generation (RAG).
 
 - JWT-secured multi-user chat
 - Automatic model routing
@@ -10,7 +11,7 @@ A self-hosted AI platform built with FastAPI and Ollama that provides:
 - Dynamic model discovery
 - Rate limiting and operational metrics
 
-The project focuses on backend architecture, AI integrations, security, and system design rather than simply forwarding prompts to an LLM.
+Rather than acting as a thin wrapper around a language model, the platform manages authentication, conversation persistence, document ingestion, semantic retrieval, prompt construction, and AI orchestration entirely on the backend. 
 
 ## Project Goals
 
@@ -26,18 +27,56 @@ This project was built to demonstrate backend engineering skills beyond simple C
 
 The goal was to create a platform that resembles a real AI service rather than a simple chatbot wrapper.
 
+## Key Capabilities
+
+- Secure multi-user AI chat
+- Retrieval-Augmented Generation (RAG)
+- Local LLM inference with Ollama
+- Semantic document search
+- PDF knowledge base ingestion
+- Multi-model orchestration
+
+## Design Philosophy
+
+- Local-first AI platform
+- Self-hosted models
+- Modular service architecture
+- Separation of concerns
+- Production-inspired backend design
+
 ## Features
 
+### AI Chat
+
 - JWT-secured multi-user authentication
-- Persistent chat history stored in SQLAlchemy
-- Automatic model routing for new conversations
-- Manual model selection and routing controls
-- Streaming responses from Ollama
-- Conversation summarization for context-window management
-- Dynamic model discovery from Ollama
-- User ownership validation on all chat operations
-- Rate limiting with SlowAPI
-- Health checks and operational metrics
+- Persistent conversation history
+- Streaming responses
+- Automatic conversation summarization
+- Automatic model routing
+- Manual model selection
+
+### Document Processing
+
+- PDF upload
+- Plain text upload
+- Automatic text cleaning
+- Configurable chunk generation
+- Chunk overlap
+
+### RAG
+
+- Local embeddings with nomic-embed-text
+- ChromaDB vector storage
+- Permission-aware semantic retrieval
+- Public/private document visibility
+- Automatic prompt context construction
+
+### Platform
+
+- Rate limiting
+- Operational metrics
+- Health monitoring
+- Dynamic model discovery
 
 ## Tech Stack
 
@@ -46,9 +85,17 @@ The goal was to create a platform that resembles a real AI service rather than a
 - SQLAlchemy
 - Pydantic
 
-### AI Integration
+### AI & Retrieval
 - Ollama
+- ChromaDB
+- nomic-embed-text
 - HTTPX
+
+### Logging
+- Loguru 
+
+### Document Processing
+- PyPDF
 
 ### Security
 - JWT (python-jose)
@@ -58,16 +105,18 @@ The goal was to create a platform that resembles a real AI service rather than a
 - SlowAPI
 - SQLite
 
-
 ## Project Structure
 
-- app/main.py - FastAPI application and route definitions
-- app/core/ - configuration, security, rate limiting
-- app/services/ - chat and routing logic
-- app/integrations/ - Ollama client integration
-- app/models/ - SQLAlchemy models
-- app/schemas/ - request/response models
-- app/api/ - metrics and health helpers
+```
+app/
+├── api/             # API endpoints
+├── core/            # Configuration, security, rate limiting
+├── integrations/    # Ollama and ChromaDB clients
+├── models/          # SQLAlchemy ORM models
+├── schemas/         # Pydantic request/response models
+├── services/        # Business logic (chat, routing, documents, RAG)
+└── main.py          # FastAPI application
+```
 
 
 ## Prerequisites
@@ -88,6 +137,11 @@ DATABASE_URL=sqlite:///./ai_platform.db
 OLLAMA_URL=http://localhost:11434/api/chat
 BASE_OLLAMA_URL=http://localhost:11434
 DEFAULT_MODEL=qwen:latest
+EMBEDDING_MODEL = "nomic-embed-text"
+EMBEDDING_URL = "http://localhost:11434/api/embeddings"
+CHROMA_PATH = "./chroma_db"
+CHROMA_COLLECTION = name-of-database
+
 ```
 
 ## Installation
@@ -114,50 +168,95 @@ The API will be available at:
 - ReDoc: http://127.0.0.1:8000/redoc
 
 ## Main Endpoints
+```text 
+Authentication
 
-### Authentication
-- POST /auth/register
-- POST /auth/login
-- GET /me
+- POST     /auth/register
+- POST     /auth/login
+- GET      /me
 
-### Chat
-- POST /chat
-- POST /chat/stream
-- GET /chat/history/{chat_id}
-- PATCH /chat/{chat_id}/title
-- GET /chat/list
-- DELETE /chat/{chat_id}
+Chat
 
-### Models and Routing
+- POST     /chat
+- POST     /chat/stream
+- GET      /chat/history/{chat_id}
+- PATCH    /chat/{chat_id}/title
+- GET      /chat/list
+- DELETE   /chat/{chat_id}
+
+Models and Routing
+
 - GET /models
-- PATCH /model/update/routing_mode
-- PATCH /model/update/model
+- PATCH    /model/update/routing_mode
+- PATCH    /model/update/model
 
-### Monitoring
-- GET /health
-- GET /stats
+Monitoring
+
+- GET      /health
+- GET      /stats
+
+Documents
+
+- POST     /documents/upload
+- GET      /documents/list
+- GET      /documents/{doc_id}
+- DELETE   /documents/{doc_id}
+- PATCH    /document/visibility
+```
 
 ## Architecture
 
 ```text
+                    Document Upload
+                           │
+                           ▼
+                  PDF / TXT Extraction
+                           │
+                           ▼
+                    Text Cleaning
+                           │
+                           ▼
+                  Chunk Generation
+                           │
+                           ▼
+                 Ollama Embeddings
+                           │
+                           ▼
+                     ChromaDB
+
+────────────────────────────────────────────
+
 User Prompt
       │
       ▼
 Authentication
       │
       ▼
-Chat Service
+Generate Query Embedding
       │
-      ├── Context Management
-      ├── Chat Persistence
-      ├── Model Selection
-      └── Streaming Support
+      ▼
+Semantic Search
+      │
+      ▼
+Retrieve Context
+      │
+      ▼
+Build Prompt
+      │
+      ▼
+Conversation History
+      │
+      ▼
+System Prompt
+      │
+      ▼
+Payload Builder
       │
       ▼
     Ollama
       │
       ▼
-Response Stored in Database
+Persist Response
 ```
 
 ## Technical Highlights
@@ -179,6 +278,10 @@ All chat operations enforce user ownership validation, preventing unauthorized a
 
 Supports token streaming from Ollama for improved user responsiveness while persisting the complete assistant response to the database for future retrieval and context management.
 
+### Retrieval-Augmented Generation
+
+Uploaded documents are parsed, cleaned, chunked, embedded with Ollama's nomic-embed-text model, and stored in ChromaDB. User prompts are embedded at query time and matched against permission-filtered document vectors before being injected into the LLM prompt.
+
 ### Operational Metrics
 
 Tracks:
@@ -189,28 +292,23 @@ Tracks:
 - Model usage distribution
 - Average response times
 - Per-model latency metrics
+- Documents
+- Embedded documents
+- Chunks
+- Stored vectors
+- Synchronization status
 
 ## Current Status
 
-V1.1 Feature Complete
+Version 2.0
 
-Implemented:
-- Authentication and authorization
-- Multi-user chat persistence
-- Model routing
-- Streaming responses
-- Conversation summarization
-- Dynamic model discovery
-- Rate limiting
-- Health monitoring
-- Operational metrics
+The platform now supports authenticated multi-user chat, Retrieval-Augmented Generation (RAG), semantic document search, and local LLM orchestration using Ollama and ChromaDB.
 
-## Roadmap (V2)
+## Future Improvements (V3)
 
-- PDF and document upload
-- Document parsing pipeline
-- Embeddings generation
-- Vector database integration
-- Retrieval Augmented Generation (RAG)
-- Knowledge-base search
-- Multi-document analysis
+- Repository ingestion
+- Code-aware chunking
+- Hybrid search
+- Workspace support
+- Redis caching
+- Docker deployment

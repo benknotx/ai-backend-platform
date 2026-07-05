@@ -8,7 +8,7 @@ from app.core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 import app.models as DBmodels
 from app.database.session import get_db
 from app.models import User
-
+from loguru import logger
 
 
 
@@ -52,6 +52,7 @@ def create_user(user_name: str, password: str, db):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    logger.info(f"New User created {user_name} total user count:{db.query(DBmodels.User).count()}")
     return new_user 
 
 def login_auth(username ,password, db):

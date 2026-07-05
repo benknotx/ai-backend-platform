@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os 
 load_dotenv()
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
@@ -16,3 +17,14 @@ MODEL_MAP = {
     "CHAT": "gemma4:e4b",
     "SUMMARY": "gemma3:1b"
 }
+
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 100
+
+
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
+EMBEDDING_URL = os.getenv("EMBEDDING_URL")
+
+CHROMA_PATH = os.getenv("CHROMA_PATH")
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION")
+

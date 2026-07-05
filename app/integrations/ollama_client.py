@@ -1,17 +1,15 @@
 import httpx
-from app.core.config import BASE_OLLAMA_URL, OLLAMA_URL, DEFAULT_MODEL
+from app.core.config import BASE_OLLAMA_URL, OLLAMA_URL, DEFAULT_MODEL, EMBEDDING_MODEL, EMBEDDING_URL
 import json
-import app.services as services
 from fastapi import HTTPException
 
 
-async def chat(messages: list, model: str = DEFAULT_MODEL):
+async def chat(payload):
+    payload = payload.copy()
+    payload["stream"] = False
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(OLLAMA_URL, 
-                                        json={"model": model,
-                                            "messages": messages,
-                                            "stream": False})
+            response = await client.post(OLLAMA_URL, json=payload)
             response.raise_for_status()
             response_data = response.json()
             return  response_data["message"]["content"]
@@ -25,10 +23,12 @@ async def chat(messages: list, model: str = DEFAULT_MODEL):
         raise HTTPException(status_code=500, detail="Ollama request failed.")
         
         
-async def stream_chat(messages: list, model: str = DEFAULT_MODEL):
+async def stream_chat(payload):
+    payload = payload.copy()
+    payload["stream"] = True
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream("POST", OLLAMA_URL, json={"model": model, "messages": messages, "stream": True}) as response:
+            async with client.stream("POST", OLLAMA_URL, json=payload) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if line:
@@ -42,12 +42,11 @@ async def stream_chat(messages: list, model: str = DEFAULT_MODEL):
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"Model not found.")
-        raise HTTPException(status_code=500, detail="Ollama request failed.")
+        raise HTTPException(status_code=500, detail="Ollama request failed.989")
 
 
 
-async def generate_chat_summary(chat_id, user_id, db):
-    history = services.chat_service.get_chat_history_return_conversation(chat_id, user_id, db)
+async def generate_chat_summary(history):
     system_prompt ="""
                    You are a summarization assistant.
                     Generate a concise summary of the conversation between a user and an AI assistant.
@@ -80,9 +79,25 @@ async def generate_chat_summary(chat_id, user_id, db):
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="Ollama unavailable")
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=500, detail="Ollama request failed.")
+        raise HTTPException(status_code=500, detail="Ollama request failed.787")
 
-    
+async def generate_embeddings(text:str):
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response= await client.post(EMBEDDING_URL,
+                                        json = {'model': EMBEDDING_MODEL,
+                                          'prompt': text})
+            response.raise_for_status()
+            response_data= response.json()
+            return response_data["embedding"]
+    except httpx.ReadTimeout:
+        raise HTTPException(status_code=504, detail="Model response timed out.")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Ollama unavailable")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Model not found.")
+        raise HTTPException(status_code=500, detail="Ollama request failed.123")    
 
 
 def get_installed_models():
@@ -93,3 +108,6 @@ def get_installed_models():
         return models.get("models", [])
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="Ollama unavailable")
+    
+
+    

@@ -6,6 +6,8 @@ from fastapi import HTTPException
 import app.services as services
 from app.core.config import MAX_CONTEXT_MESSAGES, MODEL_MAP
 import time 
+import app.services.rag_service as rag_service
+from loguru import logger
 
 def add_message_to_db(chat_id, message, db: Session, model=None, response_time = None):
     message_entry = app.models.Message(chat_id=chat_id, role=message["role"], content =message["content"], model=model, response_time = response_time)
@@ -24,7 +26,8 @@ async def process_chat(user_id, prompt, db: Session, chat_id):
     user_message = {"role": "user", "content": prompt}
     add_message_to_db(chat_id, user_message, db, model = "user")
     selected_model = await services.routing_service.get_model_for_chat(chat)
-    response = await ollama_client.chat(get_chat_history_return_conversation(chat_id, user_id, db), selected_model)
+    payload = await build_chat_payload(user_id, prompt,chat_id, selected_model, db)
+    response = await ollama_client.chat(payload)
     assistant_message = {"role": "assistant", "content": response}
     elapsed_time = time.perf_counter()-start_time
     add_message_to_db(chat_id, assistant_message, db, model = selected_model, response_time = elapsed_time)
@@ -37,8 +40,8 @@ async def process_stream_chat(user_id, prompt, db:Session, chat_id):
     add_message_to_db(chat_id, user_message, db, model = "user")
     chunks =[]
     selected_model = await services.routing_service.get_model_for_chat(get_user_chat_or_404(chat_id, user_id, db))
-    conversation = get_chat_history_return_conversation(chat_id, user_id, db)
-    async for chunk in ollama_client.stream_chat(conversation, selected_model):
+    payload = await build_chat_payload(user_id, prompt,chat_id, selected_model, db)
+    async for chunk in ollama_client.stream_chat(payload):
         chunks.append(chunk)
         yield chunk
     full_response = "".join(chunks)
@@ -47,13 +50,14 @@ async def process_stream_chat(user_id, prompt, db:Session, chat_id):
     add_message_to_db(chat_id, assistant_message, db, model = selected_model, response_time = elapsed_time)
     await check_and_call_summarizer(chat_id, user_id, db)
 
-def create_chat(id, db:Session, model):
-    new_chat = app.models.Chat(user_id = id,
+def create_chat(userid, db:Session, model):
+    new_chat = app.models.Chat(user_id = userid,
                                title = "New Chat", 
                                model = model)
     db.add(new_chat)
     db.commit()
     db.refresh(new_chat)
+    logger.info(f"New chat created for user {userid}")
     return new_chat.id
 
 def get_user_chat_or_404(chat_id, user_id, db: Session):
@@ -86,13 +90,14 @@ async def check_and_call_summarizer(chat_id, user_id, db):
     chat = get_user_chat_or_404(chat_id, user_id, db)
     message_count = (db.query(app.models.Message).filter(app.models.Message.chat_id == chat_id).count())
     if message_count >= (chat.summary_message_count + MAX_CONTEXT_MESSAGES):
-        summary_data = await ollama_client.generate_chat_summary(chat_id, user_id, db)
+        summary_data = await ollama_client.generate_chat_summary(services.chat_service.get_chat_history_return_conversation(chat_id, user_id, db))
         if chat.routing_mode =="AUTO":
             category = await services.classify_prompt(summary_data)
             chat.model= MODEL_MAP[category]
         chat.summary = summary_data
         chat.summary_message_count = message_count
         db.commit()
+        logger.info(f"New summary created for chat {chat_id}")
 
 
 def get_chat_list(user_id, db:Session): 
@@ -106,3 +111,25 @@ def del_chat(chat_id, user_id, db):
     db.delete(chat)
     db.commit()
     return {"detail": "Chat deleted successfully"}
+
+async def build_chat_payload(user_id, prompt,chat_id, model, db:Session):
+    rag_response = await rag_service.retrieve_context(prompt, user_id)
+    history = get_chat_history_return_conversation(chat_id, user_id, db)
+    payload ={"model": model,
+            "messages":[{
+                "role": "system",
+                "content":  "You are a helpful AI assistant. " \
+                            "Answer using the retrieved context when it is relevant." \
+                            "If the retrieved context is unrelated, answer normally." \
+                            "Do not invent facts that contradict the retrieved context."},
+                {"role": "system",
+                "content": rag_response},
+                *history,
+                {"role": "user",
+                 "content": prompt}]}
+    return payload
+  
+    
+
+    
+

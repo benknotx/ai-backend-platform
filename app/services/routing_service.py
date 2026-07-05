@@ -7,6 +7,7 @@ import app.models as DBmodels
 import app.services as helper
 from app.core.config import MODEL_MAP
 from app.integrations.ollama_client import get_installed_models
+from loguru import logger
 
 class ClassificationOptions(BaseModel): 
     category: Literal["CODER","GENERAL" ,"CHAT","SUMMARY"] 
@@ -94,6 +95,7 @@ def set_mode(chat_id, mode, user_id, db):
     chat.routing_mode = mode
     db.commit()
     db.refresh(chat)
+    logger.info(f"Chat {chat_id}'s routing mode has been changed to {mode} by {user_id}")
     return {"chat_id": chat_id, "mode": mode}
 
 def set_model(chat_id, model, user_id, db):
@@ -106,6 +108,7 @@ def set_model(chat_id, model, user_id, db):
     chat.model = model
     db.commit()
     db.refresh(chat)
+    logger.info(f"Chat {chat_id}'s chat model has been changed to {model} by {user_id}")
     return {"chat_id": chat_id, "model": model}
 
 

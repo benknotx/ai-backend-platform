@@ -15,3 +15,4 @@ class User(Base):
     created_at = Column(DateTime, default= datetime.now(timezone.utc))
 
     chats = relationship("Chat", back_populates="user")
+    documents = relationship("Document", back_populates="user")
