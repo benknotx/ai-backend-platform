@@ -21,39 +21,39 @@ from app.core.rate_limit import limiter
 
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title= "Private AI Platform")
+app = FastAPI(title= "Private AI Platform", description="Self-hosted AI platform featuring Retrieval-Augmented Generation (RAG), multi-user authentication, document ingestion, semantic search, and local LLM orchestration.")
 app.state.limiter = limiter
 app.add_exception_handler(RLE,RLH)
 
 
 
-@app.get("/")
+@app.get("/",tags=["Monitoring"])
 def read_root():
     return {"message": "Welcome to the Private AI Platform!"}
 
-@app.get("/health")
+@app.get("/health",tags=["Monitoring"])
 def health(db: Session = Depends(get_db)):
     return metrics.get_health(db)
 
-@app.get("/stats")
+@app.get("/stats",tags=["Monitoring"])
 def get_stats(db: Session = Depends(get_db)):
     return metrics.stats(db)
 
-@app.post("/auth/register", response_model=schemas.RegisterResponse)
+@app.post("/auth/register",tags=["Authentication"], response_model=schemas.RegisterResponse)
 @limiter.limit("2/minute")
 def register(request: Request, login_request: schemas.RegisterRequest, db: Session = Depends(get_db)):
     return auth.create_user(login_request.username, login_request.password, db)
 
-@app.post("/auth/login", response_model=schemas.TokenResponse)
+@app.post("/auth/login", tags=["Authentication"],  response_model=schemas.TokenResponse)
 @limiter.limit("5/minute")
 def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     return auth.login_auth(form_data.username, form_data.password, db)
 
-@app.get("/me", response_model=schemas.UserResponse)
+@app.get("/me", tags=["Authentication"],  response_model=schemas.UserResponse)
 def read_user(current_user: DBmodels.User = Depends(auth.get_current_user)):
     return current_user
 
-@app.post("/chat", response_model=schemas.ChatResponse)
+@app.post("/chat", tags=["Chat"],  response_model=schemas.ChatResponse)
 @limiter.limit("10/minute")
 async def chat(request: Request, chat_request: schemas.ChatRequest, current_user = Depends(auth.get_current_user), db : Session = Depends(get_db)):
     return await helper.process_chat(user_id = current_user.id,
@@ -61,12 +61,12 @@ async def chat(request: Request, chat_request: schemas.ChatRequest, current_user
                                                chat_id=chat_request.chat_id,
                                                 db=db)
 
-@app.get("/chat/history/{chat_id}", response_model=schemas.EntireHistoryResponse)
+@app.get("/chat/history/{chat_id}",tags=["Chat"], response_model=schemas.EntireHistoryResponse)
 @limiter.limit("10/minute")
 def get_chat_history(request: Request, chat_id:int, current_user = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return {"history": helper.get_chat_history_return_all(chat_id, current_user.id, db)}
 
-@app.patch("/chat/{chat_id}/title", response_model= schemas.PatchTitleResponse)
+@app.patch("/chat/{chat_id}/title",tags=["Chat"], response_model= schemas.PatchTitleResponse)
 def update_chat_title(chat_requests: schemas.PatchTitleRequest, current_user = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     chat = helper.get_user_chat_or_404(chat_requests.chat_id, current_user.id, db)
     chat.title = chat_requests.title
@@ -74,12 +74,12 @@ def update_chat_title(chat_requests: schemas.PatchTitleRequest, current_user = D
     db.refresh(chat)
     return {"chat_id": chat.id, "title": chat.title, "model": chat.model}
 
-@app.get("/chat/list")
+@app.get("/chat/list", tags=["Chat"])
 @limiter.limit("2/minute")
 def get_chats(request: Request, db: Session= Depends(get_db), current_user = Depends(auth.get_current_user)):
     return helper.get_chat_list(current_user.id, db)
 
-@app.post("/chat/stream")
+@app.post("/chat/stream", tags=["Chat"])
 @limiter.limit("10/minute")
 async def stream_chat(request: Request, chat_request: schemas.ChatRequest, current_user = Depends(auth.get_current_user), db : Session = Depends(get_db)):
     if not chat_request.chat_id:
@@ -93,42 +93,42 @@ async def stream_chat(request: Request, chat_request: schemas.ChatRequest, curre
             yield chunk
     return StreamingResponse(event_generator(), media_type="text/plain")
 
-@app.get("/models")
+@app.get("/models", tags=["Model"])
 def display_models():
     return {"models": ollama.get_installed_models()}
 
-@app.patch("/model/update/routing_mode",response_model = schemas.RoutingMode)
+@app.patch("/model/update/routing_mode",tags=["Model"], response_model = schemas.RoutingMode)
 def set_routing_mode(route_request: schemas.RoutingMode, current_user=Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return helper.set_mode(route_request.chat_id, route_request.mode, current_user.id, db)
  
 
-@app.patch("/model/update/model", response_model = schemas.UpdateModel)
+@app.patch("/model/update/model",tags=["Model"], response_model = schemas.UpdateModel)
 def update_model(model_request: schemas.UpdateModel, current_user=Depends(auth.get_current_user),db: Session = Depends(get_db)):
     return helper.set_model(model_request.chat_id, model_request.model, current_user.id, db)
 
-@app.delete("/chat/{chat_id}")
+@app.delete("/chat/{chat_id}", tags=["Chat"])
 def delete_chat(chat_id: int, current_user=Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return helper.del_chat(chat_id, current_user.id, db)
 
 
-@app.get("/documents/list", response_model= schemas.DocumentList)
+@app.get("/documents/list", tags=["Documents"],response_model= schemas.DocumentList)
 def retrieve_a_list_of_all__available_documents(request: Request, current_user = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return {"documents": helper.get_all_available_documents(current_user.id, db)}
 
 
-@app.get("/documents/{doc_id}", response_model = schemas.DocumentResponse)
+@app.get("/documents/{doc_id}",tags=["Documents"], response_model = schemas.DocumentResponse)
 def retrieve_document(request: Request, doc_id,current_user=Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return helper.get_accessible_document(doc_id, current_user.id, db)
 
-@app.post("/documents/upload", response_model=schemas.DocumentResponse) 
+@app.post("/documents/upload",tags=["Documents"], response_model=schemas.DocumentResponse) 
 async def upload_document(file: UploadFile, visibility: schemas.VisibilityEnum = schemas.VisibilityEnum.private, current_user = Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return await helper.upload_document_pipeline(file, current_user.id, visibility=visibility, db=db)
 
-@app.delete("/documents/{id}")
+@app.delete("/documents/{id}",tags=["Documents"],)
 def delete_document(doc_id: int, current_user=Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return helper.document_delete_pipeline(doc_id, current_user.id, db)
 
-@app.patch("/document/visibility", response_model=schemas.DocumentResponse)
+@app.patch("/document/visibility",tags=["Documents"], response_model=schemas.DocumentResponse)
 def set_routing_mode(visibility_request: schemas.VisibilityChange, current_user=Depends(auth.get_current_user), db: Session = Depends(get_db)):
     return helper.visibility_update_pipeline(visibility_request.doc_id, visibility_request.visibility, current_user.id, db)
     
